@@ -3,81 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CeltApp - Mini-jeux</title>
+    <title>CeltApp</title>
     <style>
-        /* === Style général === */
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
-            background: linear-gradient(135deg, #1f1c2c, #928dab);
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
             color: #fff;
             display: flex;
             flex-direction: column;
-            align-items: center;
             justify-content: center;
-            min-height: 100vh;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
             text-align: center;
         }
-
         h1 {
-            font-size: 3em;
-            margin-bottom: 0.2em;
+            color: #00ffff;
         }
-
         p {
-            font-size: 1.2em;
-            margin-bottom: 1em;
+            font-size: 1.2rem;
         }
-
-        .download-btn {
+        a.button {
             display: inline-block;
-            padding: 15px 35px;
-            margin: 10px;
-            background-color: #ff6f61;
-            color: #fff;
+            padding: 15px 30px;
+            margin-top: 20px;
+            background-color: #00ffff;
+            color: #1a1a1a;
             text-decoration: none;
             font-weight: bold;
-            font-size: 1.2em;
-            border-radius: 12px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            transition: all 0.2s ease-in-out;
+            border-radius: 10px;
+            transition: 0.3s;
         }
-
-        .download-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.5);
-            background-color: #ff856f;
-        }
-
-        .version {
-            margin-top: 1em;
-            font-size: 0.9em;
-            opacity: 0.8;
-        }
-
-        .logo {
-            width: 120px;
-            height: 120px;
-            margin-bottom: 1em;
+        a.button:hover {
+            background-color: #00dddd;
         }
     </style>
 </head>
 <body>
-    <!-- Logo / Image -->
-    <img src="logo.png" alt="Logo CeltApp" class="logo">
-
     <h1>CeltApp</h1>
-    <p>Mini-jeux et fun, toujours à jour !</p>
-
-    <!-- Bouton de téléchargement -->
-    <a class="download-btn" href="https://github.com/enzoschutz2003-ship-it/celtapp/releases/download/v1.0/main.exe" target="_blank">
+    <p>Bienvenue sur CeltApp !</p>
+    <p>Pour télécharger la dernière version, clique sur le bouton ci-dessous :</p>
+    <a class="button" href="https://github.com/enzoschutz2003-ship-it/celtapp/releases/download/v1.0/main.exe" target="_blank">
         Télécharger CeltApp
     </a>
-
-    <!-- Version -->
-    <div class="version">
-        Version actuelle : v1.0
-    </div>
+    <p style="margin-top: 40px; font-size: 0.9rem; color: #aaa;">
+        Site officiel de l'application de mini-jeux CeltApp.
+    </p>
 </body>
 </html>
