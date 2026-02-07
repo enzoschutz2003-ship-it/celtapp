@@ -1,53 +1,1751 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CeltApp</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #1a1a1a;
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            text-align: center;
-        }
-        h1 {
-            color: #00ffff;
-        }
-        p {
-            font-size: 1.2rem;
-        }
-        a.button {
-            display: inline-block;
-            padding: 15px 30px;
-            margin-top: 20px;
-            background-color: #00ffff;
-            color: #1a1a1a;
-            text-decoration: none;
-            font-weight: bold;
-            border-radius: 10px;
-            transition: 0.3s;
-        }
-        a.button:hover {
-            background-color: #00dddd;
-        }
-    </style>
-</head>
-<body>
-    <h1>CeltApp</h1>
-    <p>Bienvenue sur CeltApp !</p>
-    <p>Pour télécharger la dernière version, clique sur le bouton ci-dessous :</p>
-    <a class="button" href="https://github.com/enzoschutz2003-ship-it/celtapp/releases/download/v1.0/main.exe" target="_blank">
-        Télécharger CeltApp
-    </a>
-    <p style="margin-top: 40px; font-size: 0.9rem; color: #aaa;">
-        Site officiel de l'application de mini-jeux CeltApp.
-    </p>
-</body>
-</html>
+import random
+import string
+import webbrowser
+from kivy.app import App
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.screenmanager import ScreenManager, Screen, FadeTransition
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
+from kivy.graphics import Color, RoundedRectangle
+from kivy.core.window import Window
+from kivy.uix.popup import Popup
+from kivy.clock import Clock
+from kivy.core.audio import SoundLoader
+from kivy.uix.slider import Slider
+from kivy.uix.image import Image
+from kivy.core.text import LabelBase
+from kivy.animation import Animation
+from kivy.graphics.texture import Texture
+from kivy.graphics import Rectangle, Color, Ellipse
+from kivy.core.image import Image as CoreImage
+from kivy.uix.widget import Widget
+from kivy.uix.image import Image as KivyImage
+import math
+from io import BytesIO
+from PIL import Image as PILImage, ImageDraw, ImageFont
+from kivy.uix.screenmanager import SlideTransition
+import os
+from kivy.uix.boxlayout import BoxLayout
+import socket
+import threading
+import json
+import requests, sys, os, subprocess, ctypes
+
+CURRENT_VERSION = "v1.0"
+REPO = "enzoschutz2003-ship-it/celtapp"
+
+def notify(title, text):
+    """Popup Windows simple"""
+    ctypes.windll.user32.MessageBoxW(0, text, title, 0)
+
+def get_latest_release(repo):
+    """Récupère la dernière release sur GitHub"""
+    api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+    try:
+        r = requests.get(api_url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        version = data["tag_name"]
+        for asset in data["assets"]:
+            if asset["name"].endswith(".exe"):
+                return asset["browser_download_url"], version
+    except Exception as e:
+        print(f"❌ Erreur serveur : {e}")
+    return None, None
+
+def download_file(url, filename, retries=5):
+    """Télécharge un fichier avec retry"""
+    chunk_size = 1024 * 1024
+    attempt = 0
+    while attempt < retries:
+        try:
+            with requests.get(url, stream=True, timeout=10) as r:
+                r.raise_for_status()
+                with open(filename, "wb") as f:
+                    for chunk in r.iter_content(chunk_size):
+                        if chunk:
+                            f.write(chunk)
+            return True
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Erreur serveur : {e}")
+            attempt += 1
+            time.sleep(2)
+    return False
+
+def auto_update():
+    exe_path = sys.executable
+    new_exe_path = exe_path + ".new"
+
+    url, latest_version = get_latest_release(REPO)
+    if not url:
+        return  # pas de release
+
+    if latest_version == CURRENT_VERSION:
+        return  # déjà à jour
+
+    # Popup info mise à jour
+    ctypes.windll.user32.MessageBoxW(0, f"Mise à jour vers {latest_version} en cours...", "Mise à jour", 0)
+
+    if download_file(url, new_exe_path):
+        # Crée un .bat temporaire pour remplacer l'ancien exe
+        bat_script = exe_path + ".update.bat"
+        with open(bat_script, "w") as f:
+            f.write(f"""@echo off
+ping 127.0.0.1 -n 2 > nul
+del "{exe_path}"
+rename "{new_exe_path}" "{os.path.basename(exe_path)}"
+start "" "{exe_path}"
+del "%~f0"
+""")
+        subprocess.Popen(bat_script, shell=True)
+        sys.exit()
+    else:
+        notify("Erreur mise à jour", "Impossible de télécharger la nouvelle version.")
+
+# Appel automatique au démarrage
+auto_update()
+
+
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+roulette_click = SoundLoader.load(resource_path("assets/clic.wav"))
+
+
+class AnimatedRunner(Image):
+    def __init__(self, frames, **kwargs):
+        super().__init__(**kwargs)
+        self.frames = frames
+        self.index = 0
+
+        if self.frames:
+            self.texture = self.frames[0]
+
+        Clock.schedule_interval(self.next_frame, 0.12)
+
+    def next_frame(self, dt):
+        if not self.frames:
+            return
+        self.index = (self.index + 1) % len(self.frames)
+        self.texture = self.frames[self.index]
+
+
+
+
+import questions  # questions.questions_list = [{'question': '...', 'reponse': '...'}, ...]
+
+# ==== CONFIG ====
+Window.clearcolor = (0.25, 0.30, 0.95, 1)
+Window.minimum_width = 500
+Window.minimum_height = 700
+
+def generate_code(length=6):
+    chars = string.ascii_uppercase + string.digits
+    return ''.join(random.choice(chars) for _ in range(length))
+
+# ================= AUDIO =================
+# Chargement des sons
+roulette_click = SoundLoader.load(resource_path("assets/clic.wav"))
+launch_sound = SoundLoader.load(resource_path("assets/lance.wav"))
+click_sound = SoundLoader.load(resource_path("assets/clic.wav"))
+music = SoundLoader.load(resource_path("assets/son.mp3"))
+help_voice_female = SoundLoader.load(resource_path("assets/help_femme.mp3"))
+help_voice_male = SoundLoader.load(resource_path("assets/help_homme.mp3"))
+
+
+if help_voice_female:
+    help_voice_female.volume = 1
+if help_voice_male:
+    help_voice_male.volume = 0.6
+
+# Voix active par défaut
+current_help_voice = help_voice_male
+
+if launch_sound: launch_sound.volume = 0.8
+if click_sound: click_sound.volume = 0.7
+if music:
+    music.volume = 0.5
+    music.loop = True
+
+def play_launch():
+    if launch_sound:
+        launch_sound.stop()
+        launch_sound.play()
+def play_click():
+    if click_sound:
+        click_sound.stop()
+        click_sound.play()
+def play_music():
+    if music:
+        music.stop()
+        music.play()
+
+def play_help_voice():
+    if help_voice_female:
+        help_voice_female.stop()
+    if help_voice_male:
+        help_voice_male.stop()
+
+    if current_help_voice:
+        current_help_voice.play()
+
+# --- Fonction pour jouer le son au lancement ---
+def play_start_sound():
+    sound = SoundLoader.load("assets/lance.wav")  # change le fichier si besoin
+    if sound:
+        sound.play()
+
+
+
+# Utilitaire pour récupérer le widget enfant principal d'un Screen
+def get_widget(sm, screen_name):
+    """
+    Retourne le widget enfant principal du Screen nommé `screen_name`.
+    sm : ScreenManager
+    """
+    screen = sm.get_screen(screen_name)
+    if screen.children:
+        return screen.children[0]
+    return None
+
+def send_to_server(data):
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(("127.0.0.1", 5051))
+        s.send(json.dumps(data).encode())
+        response = json.loads(s.recv(1024).decode())
+        s.close()
+        return response
+    except Exception as e:
+        print("❌ Erreur serveur :", e)
+        return {"status": "error", "message": "Serveur indisponible"}
+
+
+# --- SCREEN DE BASE POUR LE HUB ---
+class HubScreenWrapper(Screen):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+        layout = FloatLayout()
+
+        # Hub principal
+        self.hub = HubScreen(sm)
+        layout.add_widget(self.hub)
+
+        self.add_widget(layout)
+
+
+
+# ==== SETTINGS SCREEN ====
+class SettingsScreen(FloatLayout):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+        with self.canvas.before:
+            Color(0.2, 0.25, 0.9, 1)
+            self.bg = RoundedRectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self.update_bg, size=self.update_bg)
+
+        self.title = Label(text="[b][color=FFFFFF]Paramètres[/color][/b]", markup=True, font_size=28,
+                           size_hint=(1, 0.1), pos_hint={"top": 0.95})
+        self.add_widget(self.title)
+
+        self.volume_label = Label(text=f"Volume musique : {int(music.volume*100)}%", font_size=20,
+                                  size_hint=(1, 0.1), pos_hint={"top": 0.75}, halign="center")
+        self.volume_label.bind(size=self.volume_label.setter('text_size'))
+        self.add_widget(self.volume_label)
+
+        self.volume_slider = Slider(min=0, max=1, value=music.volume if music else 0.5,
+                                    size_hint=(0.8,0.1), pos_hint={"center_x":0.5, "top":0.65})
+        self.volume_slider.bind(value=self.on_volume_change)
+        self.add_widget(self.volume_slider)
+
+        self.back_btn = Button(text="⬅ RETOUR", size_hint=(0.3,0.08), pos_hint={"center_x":0.5, "y":0.05},
+                               background_normal='', background_color=(0.95,0.3,0.3,1),
+                               color=(1,1,1,1), font_size=18, bold=True)
+        self.back_btn.bind(on_press=self.go_back)
+        self.add_widget(self.back_btn)
+
+    def update_bg(self, *args):
+        self.bg.pos = self.pos
+        self.bg.size = self.size
+
+    def on_volume_change(self, instance, value):
+        if music:
+            music.volume = value
+        self.volume_label.text = f"Volume musique : {int(value * 100)}%"
+
+    def go_back(self, instance):
+        play_click()
+        self.sm.current = 'hub'
+
+
+# ==== HUB SCREEN CORRIGÉ AVEC SPRITE ET BOND FLUIDE ====
+import math
+
+
+def show_help_popup():
+    global current_help_voice
+
+    layout = BoxLayout(orientation="vertical", spacing=15, padding=20)
+
+    # Texte d'explication
+    text = (
+        "Bienvenue dans l'application de mini-jeux !\n\n"
+        "Utilise les boutons pour créer ou rejoindre une partie.\n"
+    )
+    label = Label(text=text, halign="center", valign="middle")
+    label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
+    layout.add_widget(label)
+
+    # --- Boutons lecture ---
+    btns = BoxLayout(size_hint=(1, None), height=50, spacing=10)
+    play_btn = Button(text="▶ Play")
+    replay_btn = Button(text="🔁 Rejouer")
+    close_btn = Button(text="❌ Fermer")
+    btns.add_widget(play_btn)
+    btns.add_widget(replay_btn)
+    btns.add_widget(close_btn)
+    layout.add_widget(btns)
+
+    # --- Boutons choix voix ---
+    voices_box = BoxLayout(size_hint=(1, None), height=50, spacing=10)
+    voice_female_btn = Button(text="🎙️ Voix féminine")
+    voice_male_btn = Button(text="🎙️ Voix masculine")
+    voices_box.add_widget(voice_female_btn)
+    voices_box.add_widget(voice_male_btn)
+    layout.add_widget(voices_box)
+
+    # --- Création du popup ---
+    popup = Popup(
+        title="❓ Aide & Explications",
+        content=layout,
+        size_hint=(0.8, 0.6),
+        auto_dismiss=False
+    )
+
+    # --- Fonction pour arrêter la voix ---
+    def stop_help_voice():
+        if help_voice_female:
+            help_voice_female.stop()
+        if help_voice_male:
+            help_voice_male.stop()
+
+    # --- Fonction pour jouer la voix active ---
+    def play_help_voice_func():
+        stop_help_voice()  # stop avant de lancer
+        if current_help_voice:
+            current_help_voice.play()
+
+    # --- Fonction pour changer de voix ---
+    def set_help_voice(voice_type):
+        global current_help_voice
+        current_help_voice = help_voice_female if voice_type == "female" else help_voice_male
+        play_help_voice_func()
+
+    # --- Bind des boutons ---
+    play_btn.bind(on_press=lambda x: play_help_voice_func())
+    replay_btn.bind(on_press=lambda x: play_help_voice_func())
+    close_btn.bind(on_press=lambda x: popup.dismiss())
+
+    voice_female_btn.bind(on_press=lambda x: set_help_voice("female"))
+    voice_male_btn.bind(on_press=lambda x: set_help_voice("male"))
+
+    # --- STOPPER la voix quand le popup se ferme ---
+    popup.bind(on_dismiss=lambda instance: stop_help_voice())
+
+    popup.open()
+
+
+
+# ==== HUB SCREEN ====
+import random
+import string
+import webbrowser
+import os
+import sys
+import json
+import socket
+from io import BytesIO
+import math
+
+from kivy.app import App
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
+from kivy.uix.slider import Slider
+from kivy.uix.popup import Popup
+from kivy.uix.image import Image as KivyImage
+from kivy.graphics import Color, RoundedRectangle, Rectangle
+from kivy.core.window import Window
+from kivy.clock import Clock
+from kivy.animation import Animation
+from kivy.core.audio import SoundLoader
+from kivy.core.image import Image as CoreImage
+from PIL import Image as PILImage, ImageDraw, ImageFont
+from kivy.uix.screenmanager import ScreenManager, Screen, FadeTransition, SlideTransition
+
+import questions  # ton fichier questions.py avec questions_list
+
+# ====================== UTILITAIRES ======================
+def resource_path(relative_path):
+    """Retourne le chemin absolu d’une ressource, même dans le .exe"""
+    try:
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+
+def send_to_server(data):
+    """Envoie et reçoit données JSON depuis le serveur"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(("127.0.0.1", 5051))
+        s.send(json.dumps(data).encode())
+        response = json.loads(s.recv(1024).decode())
+        s.close()
+        return response
+    except Exception as e:
+        print("❌ Erreur serveur :", e)
+        return {"status": "error", "message": "Serveur indisponible"}
+
+
+def generate_code(length=6):
+    chars = string.ascii_uppercase + string.digits
+    return ''.join(random.choice(chars) for _ in range(length))
+
+
+def generate_letter_texture(letter, size=24):
+    """Crée une texture Kivy à partir d'une lettre"""
+    img = PILImage.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("arial.ttf", size)
+    except:
+        font = ImageFont.load_default()
+    bbox = draw.textbbox((0, 0), letter, font=font)
+    w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
+    draw.text(((size-w)/2,(size-h)/2), letter, font=font, fill=(255,255,255,255))
+    data = BytesIO()
+    img.save(data, format="png")
+    data.seek(0)
+    return CoreImage(data, ext="png")
+
+
+# ====================== CONFIG ======================
+Window.clearcolor = (0.25, 0.3, 0.95, 1)
+Window.minimum_width = 500
+Window.minimum_height = 700
+
+# ====================== AUDIO ======================
+roulette_click = SoundLoader.load(resource_path("assets/clic.wav"))
+launch_sound = SoundLoader.load(resource_path("assets/lance.wav"))
+click_sound = SoundLoader.load(resource_path("assets/clic.wav"))
+music = SoundLoader.load(resource_path("assets/son.mp3"))
+help_voice_female = SoundLoader.load(resource_path("assets/help_femme.mp3"))
+help_voice_male = SoundLoader.load(resource_path("assets/help_homme.mp3"))
+
+if help_voice_female: help_voice_female.volume = 1
+if help_voice_male: help_voice_male.volume = 0.6
+current_help_voice = help_voice_male
+
+if launch_sound: launch_sound.volume = 0.8
+if click_sound: click_sound.volume = 0.7
+if music: music.volume = 0.5; music.loop = True
+
+def play_launch():
+    if launch_sound: launch_sound.play()
+def play_click():
+    if click_sound: click_sound.play()
+def play_music():
+    if music: music.play()
+def play_help_voice():
+    if current_help_voice:
+        help_voice_female.stop() if help_voice_female else None
+        help_voice_male.stop() if help_voice_male else None
+        current_help_voice.play()
+
+
+# ====================== ANIMATION RUNNER ======================
+class AnimatedRunner(KivyImage):
+    def __init__(self, frames, **kwargs):
+        super().__init__(**kwargs)
+        self.frames = frames
+        self.index = 0
+        if self.frames:
+            self.texture = self.frames[0]
+        Clock.schedule_interval(self.next_frame, 0.12)
+
+    def next_frame(self, dt):
+        if not self.frames: return
+        self.index = (self.index+1)%len(self.frames)
+        self.texture = self.frames[self.index]
+
+
+# ====================== HELP POPUP ======================
+def show_help_popup():
+    global current_help_voice
+    layout = BoxLayout(orientation="vertical", spacing=15, padding=20)
+
+    label = Label(text="Bienvenue !\nUtilise les boutons pour créer ou rejoindre une partie.",
+                  halign="center", valign="middle")
+    label.bind(size=lambda inst,val:setattr(inst,"text_size",val))
+    layout.add_widget(label)
+
+    # Boutons lecture
+    btns = BoxLayout(size_hint=(1,None), height=50, spacing=10)
+    play_btn = Button(text="▶ Play")
+    replay_btn = Button(text="🔁 Rejouer")
+    close_btn = Button(text="❌ Fermer")
+    btns.add_widget(play_btn); btns.add_widget(replay_btn); btns.add_widget(close_btn)
+    layout.add_widget(btns)
+
+    # Boutons voix
+    voices_box = BoxLayout(size_hint=(1,None), height=50, spacing=10)
+    voice_female_btn = Button(text="🎙️ Voix féminine")
+    voice_male_btn = Button(text="🎙️ Voix masculine")
+    voices_box.add_widget(voice_female_btn); voices_box.add_widget(voice_male_btn)
+    layout.add_widget(voices_box)
+
+    popup = Popup(title="❓ Aide & Explications", content=layout,
+                  size_hint=(0.8,0.6), auto_dismiss=False)
+
+    def stop_voice():
+        if help_voice_female: help_voice_female.stop()
+        if help_voice_male: help_voice_male.stop()
+
+    def play_voice(): stop_voice(); current_help_voice.play() if current_help_voice else None
+    def set_voice(type_):
+        global current_help_voice
+        current_help_voice = help_voice_female if type_=="female" else help_voice_male
+        play_voice()
+
+    play_btn.bind(on_press=lambda x: play_voice())
+    replay_btn.bind(on_press=lambda x: play_voice())
+    close_btn.bind(on_press=lambda x: popup.dismiss())
+    voice_female_btn.bind(on_press=lambda x: set_voice("female"))
+    voice_male_btn.bind(on_press=lambda x: set_voice("male"))
+    popup.bind(on_dismiss=lambda inst: stop_voice())
+
+    popup.open()
+
+
+# ====================== HUB SCREEN ======================
+class HubScreen(FloatLayout):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+
+        # --- Fond ---
+        self.bg_image = KivyImage(source="assets/fond.png", allow_stretch=True, keep_ratio=False,
+                                  size_hint=(1,1), pos_hint={"x":0,"y":0})
+        self.add_widget(self.bg_image, index=0)
+
+        # --- Crédit ---
+        self.credit_label = Label(
+            text="[b][color=#FFD700]Créé par @Celtreme[/color][/b]",
+            markup=True, font_size=19, size_hint=(1,0.05), pos_hint={"top":0.97}
+        )
+        self.add_widget(self.credit_label)
+
+        # --- Logo ---
+        self.logo = KivyImage(source="assets/celtreme.png", size_hint=(0.2,0.2),
+                               pos_hint={"center_x":0.5,"top":0.94})
+        self.add_widget(self.logo)
+
+        # --- Pseudo input ---
+        self.pseudo_input = TextInput(
+            hint_text="Entre ton pseudo",
+            hint_text_color=(1,1,1,1),
+            size_hint=(0.8,0.12),
+            pos_hint={"center_x":0.5,"top":0.75},
+            multiline=False, font_size=30,
+            foreground_color=(1,1,1,1),
+            cursor_color=(0.1,0.1,0.1,1),
+            halign="center", padding_y=(12,12),
+            background_color=(0.6,0.1,0.1,1)
+        )
+        self.add_widget(self.pseudo_input)
+
+        # --- Sprite perso ---
+        self.frames = []
+        for i in range(1, 5):
+            path = os.path.join("assets", "perso_run", f"frame{i}.png")
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"Image manquante : {path}")
+            self.frames.append(CoreImage(path).texture)
+        self.frame_index = 0
+
+        # Widget pour le perso (position gérée séparément)
+        self.runner_widget = Widget(size=(96,96), pos=(-120,20))
+        self.add_widget(self.runner_widget)
+
+        # Rectangle pour afficher la frame
+        with self.runner_widget.canvas:
+            self.runner_rect = Rectangle(texture=self.frames[0],
+                                         pos=self.runner_widget.pos,
+                                         size=self.runner_widget.size)
+
+        # --- Animation frames ---
+        Clock.schedule_interval(self.update_runner_frame, 0.1)
+
+        # --- Déplacement fluide avec bond ---
+        self.runner_x = -120
+        self.base_y = 20
+        self.runner_speed = 200
+        self.bond_amplitude = 8
+        self.bond_frequency = 6
+        self.time_elapsed = 0
+        Clock.schedule_interval(self.move_runner, 1/60)
+
+        # --- Boutons ---
+        self.create_btn = Button(text="CRÉER UNE PARTIE", size_hint=(0.8,0.12), pos_hint={"center_x":0.5,"top":0.58},
+                                 background_normal='', background_color=(0,0.8,0.3,1), color=(1,1,1,1),
+                                 font_size=22, bold=True)
+        self.add_widget(self.create_btn)
+        with self.create_btn.canvas.before:
+            Color(0,0.8,0.3,1)
+            self.create_rect = RoundedRectangle(pos=self.create_btn.pos, size=self.create_btn.size, radius=[30])
+        self.create_btn.bind(pos=self.update_shapes, size=self.update_shapes)
+        self.create_btn.bind(on_press=lambda x: play_click())
+        self.create_btn.bind(on_press=self.create_game)
+
+        self.join_btn = Button(text="REJOINDRE UNE PARTIE", size_hint=(0.8,0.12), pos_hint={"center_x":0.5,"top":0.42},
+                               background_normal='', background_color=(0.2,0.3,0.6,1), color=(1,1,1,1),
+                               font_size=22, bold=True)
+        self.add_widget(self.join_btn)
+        with self.join_btn.canvas.before:
+            Color(0.2,0.3,0.6,1)
+            self.join_rect = RoundedRectangle(pos=self.join_btn.pos, size=self.join_btn.size, radius=[30])
+        self.join_btn.bind(pos=self.update_shapes, size=self.update_shapes)
+        self.join_btn.bind(on_press=lambda x: play_click())
+        self.join_btn.bind(on_press=self.join_game)
+
+        # --- Bouton paramètres ---
+        self.settings_btn = Button(size_hint=(0.2,0.2), pos_hint={"right":0.19,"top":1.02},
+                                   background_normal="assets/parametre.png")
+        self.settings_btn.bind(on_press=self.go_to_settings)
+        self.add_widget(self.settings_btn)
+
+        # --- Bouton Aide ---
+        self.help_btn = Button(
+            text="AIDE",
+            size_hint=(0.15, 0.08),
+            pos_hint={"x": 0.75, "y": 0.88},
+            background_normal='',
+            background_color=(0.9, 0.6, 0, 1),
+            color=(1, 1, 1, 1),
+            font_size=20,
+            bold=True
+        )
+        self.help_btn.bind(on_press=lambda x: self.show_help_popup())
+        self.add_widget(self.help_btn)
+
+        with self.help_btn.canvas.before:
+            Color(0.9, 0.6, 0, 1)
+            self.help_rect = RoundedRectangle(pos=self.help_btn.pos, size=self.help_btn.size, radius=[20])
+        self.help_btn.bind(pos=self.update_shapes, size=self.update_shapes)
+
+        # --- Jouer le son de lancement ---
+        play_start_sound()
+
+    # ================== MÉTHODES ==================
+    def update_shapes(self, *args):
+        self.create_rect.pos = self.create_btn.pos
+        self.create_rect.size = self.create_btn.size
+        self.join_rect.pos = self.join_btn.pos
+        self.join_rect.size = self.join_btn.size
+        if hasattr(self, "help_rect"):
+            self.help_rect.pos = self.help_btn.pos
+            self.help_rect.size = self.help_btn.size
+
+    def update_runner_frame(self, dt):
+        self.frame_index = (self.frame_index + 1) % len(self.frames)
+        self.runner_rect.texture = self.frames[self.frame_index]
+
+    def move_runner(self, dt):
+        self.time_elapsed += dt
+        self.runner_x += self.runner_speed * dt
+        if self.runner_x > self.width + 120:
+            self.runner_x = -120
+            self.time_elapsed = 0
+        y_offset = math.sin(self.time_elapsed * self.bond_frequency) * self.bond_amplitude
+        self.runner_rect.pos = (self.runner_x, self.base_y + y_offset)
+
+    # ==== Actions boutons ====
+    def create_game(self, instance):
+        pseudo = self.pseudo_input.text.strip()
+        if not pseudo:
+            Popup(
+                title="⚠️ Erreur",
+                content=Label(text="Veuillez entrer un pseudo !"),
+                size_hint=(0.6, 0.3)
+            ).open()
+            return
+        code = generate_code()
+        salon_screen = self.sm.get_screen('salon').children[0]
+        salon_screen.set_info(pseudo, code)
+        self.sm.current = 'salon'
+
+    def join_game(self, instance):
+        pseudo = self.pseudo_input.text.strip()
+        if not pseudo:
+            Popup(
+                title="⚠️ Erreur",
+                content=Label(text="Veuillez entrer un pseudo !"),
+                size_hint=(0.6, 0.3)
+            ).open()
+            return
+
+        # Récupère l'écran "join"
+        join_screen = self.sm.get_screen('join')
+
+
+        # Change d'écran
+        self.sm.current = 'join'
+
+    def go_to_settings(self, instance):
+        play_click()
+        self.sm.current = 'settings'
+
+    def show_help_popup(self):
+        global current_help_voice
+        layout = BoxLayout(orientation="vertical", spacing=15, padding=20)
+
+        # Texte d'explication
+        text = (
+            "Bienvenue dans l'application de mini-jeux !\n\n"
+            "Utilise les boutons pour créer ou rejoindre une partie.\n"
+        )
+        label = Label(text=text, halign="center", valign="middle")
+        label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
+        layout.add_widget(label)
+
+        # --- Boutons lecture ---
+        btns = BoxLayout(size_hint=(1, None), height=50, spacing=10)
+        play_btn = Button(text="▶ Play")
+        replay_btn = Button(text="🔁 Rejouer")
+        close_btn = Button(text="❌ Fermer")
+        btns.add_widget(play_btn)
+        btns.add_widget(replay_btn)
+        btns.add_widget(close_btn)
+        layout.add_widget(btns)
+
+        # --- Boutons choix voix ---
+        voices_box = BoxLayout(size_hint=(1, None), height=50, spacing=10)
+        voice_female_btn = Button(text="🎙️ Voix féminine")
+        voice_male_btn = Button(text="🎙️ Voix masculine")
+        voices_box.add_widget(voice_female_btn)
+        voices_box.add_widget(voice_male_btn)
+        layout.add_widget(voices_box)
+
+        # --- Création du popup ---
+        popup = Popup(
+            title="❓ Aide & Explications",
+            content=layout,
+            size_hint=(0.8, 0.6),
+            auto_dismiss=False
+        )
+
+        # --- Fonction pour arrêter la voix ---
+        def stop_help_voice():
+            if help_voice_female:
+                help_voice_female.stop()
+            if help_voice_male:
+                help_voice_male.stop()
+
+        # --- Fonction pour jouer la voix active ---
+        def play_help_voice_func():
+            stop_help_voice()
+            if current_help_voice:
+                current_help_voice.play()
+
+        # --- Fonction pour changer de voix ---
+        def set_help_voice(voice_type):
+            global current_help_voice
+            current_help_voice = help_voice_female if voice_type == "female" else help_voice_male
+            play_help_voice_func()
+
+        # --- Bind des boutons ---
+        play_btn.bind(on_press=lambda x: play_help_voice_func())
+        replay_btn.bind(on_press=lambda x: play_help_voice_func())
+        close_btn.bind(on_press=lambda x: popup.dismiss())
+        voice_female_btn.bind(on_press=lambda x: set_help_voice("female"))
+        voice_male_btn.bind(on_press=lambda x: set_help_voice("male"))
+
+        # --- STOPPER la voix quand le popup se ferme ---
+        popup.bind(on_dismiss=lambda instance: stop_help_voice())
+        popup.open()
+
+class JoinScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.layout = FloatLayout()
+        self.add_widget(self.layout)
+
+        self.pseudo_input = TextInput(size_hint=(0.6, 0.1), pos_hint={'x':0.2,'y':0.5})
+        self.layout.add_widget(self.pseudo_input)
+
+
+# ==== SALON SCREEN ====
+class SalonScreen(FloatLayout):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+        self.pseudo = ""
+        self.code = ""
+
+        self.info_label = Label(
+            text="",
+            font_size=20,
+            size_hint=(1, 0.1),
+            pos_hint={"center_y": 0.85}
+        )
+        self.add_widget(self.info_label)
+
+        self.title = Label(
+            text="[b][color=FFFFFF]Salon de jeu[/color][/b]",
+            markup=True,
+            font_size=28,
+            size_hint=(1,0.1),
+            pos_hint={"top":0.95}
+        )
+        self.add_widget(self.title)
+
+        self.quiz_btn = Button(
+            text="🧠 Quiz Culture G",
+            size_hint=(0.8,0.12),
+            pos_hint={"center_x":0.5, "center_y":0.7}
+        )
+        self.quiz_btn.bind(on_press=self.start_quiz)
+        self.add_widget(self.quiz_btn)
+
+        self.kculture_btn = Button(
+            text="🎮 K-Culture",
+            size_hint=(0.8,0.12),
+            pos_hint={"center_x":0.5, "center_y":0.55}
+        )
+        self.kculture_btn.bind(on_press=lambda x: webbrowser.open_new_tab("https://kculture.kgames.fr/"))
+        self.add_widget(self.kculture_btn)
+
+        self.petitbac_btn = Button(
+            text="✏️ Petit Bac",
+            size_hint=(0.8,0.12),
+            pos_hint={"center_x":0.5, "center_y":0.4}
+        )
+        self.petitbac_btn.bind(on_press=lambda x: self.start_petitbac())
+        self.add_widget(self.petitbac_btn)
+
+        self.back_btn = Button(
+            text="⬅ RETOUR",
+            size_hint=(0.3,0.08),
+            pos_hint={"center_x":0.5, "y":0.05}
+        )
+        self.back_btn.bind(on_press=lambda x: setattr(self.sm, 'current', 'hub'))
+        self.add_widget(self.back_btn)
+
+    def update_roulette_bg(self, *args):
+        self.roulette_bg.pos = self.roulette_container.pos
+        self.roulette_bg.size = self.roulette_container.size
+
+    def set_info(self, pseudo, code):
+        self.pseudo = pseudo
+        self.code = code
+        self.info_label.text = f"👤 {pseudo} | 🔑 Code : {code}"
+
+        Clock.unschedule(self.update_players)
+        Clock.schedule_interval(lambda dt: self.update_players(), 2)
+
+    def start_petitbac(self):
+        petitbac = self.sm.get_screen('petitbac').children[0]
+        petitbac.start_roulette()
+        self.sm.current = 'petitbac'
+
+    def start_roulette(self):
+        self.angle = 0
+        self.roulette_time = 0
+        self.roulette_event = Clock.schedule_interval(self.update_roulette, 1 / 60)
+
+
+    def start_quiz(self, instance):
+        quiz_screen = self.sm.get_screen('quiz').children[0]
+        quiz_screen.index = 0
+        quiz_screen.score = 0
+        random.shuffle(quiz_screen.questions)
+        quiz_screen.load_question()
+        self.sm.current = 'quiz'
+
+    def update_players(self):
+        response = send_to_server({
+            "action": "get_players",
+            "code": self.code
+        })
+
+        if response["status"] != "ok":
+            return
+
+        joueurs = response["players"]
+        host = response["host"]
+
+        self.info_label.text = (
+            f"👤 {self.pseudo} | 🔑 Code : {self.code}\n"
+            f"Joueurs : {', '.join(joueurs)}"
+        )
+
+        # 🔒 Seul le host peut lancer les jeux
+        is_host = (self.pseudo == host)
+        self.quiz_btn.disabled = not is_host
+        self.petitbac_btn.disabled = not is_host
+
+
+# === Fonction utilitaire pour créer texture Kivy à partir d'une lettre ===
+
+def generate_letter_texture(letter, size=24):
+    # Crée une image PIL avec fond transparent
+    img = PILImage.new("RGBA", (size, size), (0,0,0,0))
+    draw = ImageDraw.Draw(img)
+    # Police
+    try:
+        font = ImageFont.truetype("arial.ttf", size)
+    except:
+        font = ImageFont.load_default()
+    # Mesure du texte avec textbbox
+    bbox = draw.textbbox((0, 0), letter, font=font)
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text(((size-w)/2, (size-h)/2), letter, font=font, fill=(255,255,255,255))
+    # Convertir en texture Kivy
+    data = BytesIO()
+    img.save(data, format='png')
+    data.seek(0)
+    return CoreImage(data, ext="png")
+
+# === Petit Bac Screen avec roulette ===
+
+class PetitBacScreen(FloatLayout):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+
+        self.letter = ""
+        self.categories = ["Prénom", "Pays", "Animal", "Fruit/Légume", "Objet"]
+        self.input_widgets = {}
+        self.time_left = 60
+        self.timer_event = None
+
+        # Indique si ce client est host
+        self.is_host = False
+
+        # ===== FOND =====
+        with self.canvas.before:
+            Color(0.9, 0.6, 0.2, 1)
+            self.bg = RoundedRectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self.update_bg, size=self.update_bg)
+
+        # ===================== ROULETTE =====================
+        self.roulette_container = FloatLayout(
+            size_hint=(None, None),
+            size=(260, 260),
+            pos_hint={"center_x": 0.5, "center_y": 0.6}
+        )
+        self.add_widget(self.roulette_container)
+
+        with self.roulette_container.canvas.before:
+            Color(0.15, 0.15, 0.15, 1)
+            self.roulette_bg = RoundedRectangle(radius=[130])
+
+        self.roulette_container.bind(
+            pos=self.update_roulette_bg,
+            size=self.update_roulette_bg
+        )
+        self.update_roulette_bg()
+
+        self.center_letter = Label(
+            text="?",
+            font_size=64,
+            bold=True,
+            color=(1,1,1,1),
+            pos_hint={"center_x":0.5, "center_y":0.5}
+        )
+        self.roulette_container.add_widget(self.center_letter)
+
+        with self.center_letter.canvas.before:
+            Color(0.95, 0.7, 0.2, 1)
+            self.center_bg = RoundedRectangle(radius=[40])
+        self.center_letter.bind(pos=self.update_center_bg, size=self.update_center_bg)
+
+        # ===================== JEU =====================
+        self.game_layout = FloatLayout(opacity=0)
+        self.add_widget(self.game_layout)
+
+        # Lettre en haut
+        self.letter_label_game = Label(
+            text="Lettre : ?",
+            font_size=32,
+            bold=True,
+            color=(1,1,1,1),
+            size_hint=(1, None),
+            height=50,
+            pos_hint={"center_x":0.5,"top":0.95}
+        )
+        self.game_layout.add_widget(self.letter_label_game)
+
+        # Timer
+        self.timer_label = Label(
+            text="",
+            font_size=20,
+            color=(1,1,1,1),
+            size_hint=(1, None),
+            height=40,
+            pos_hint={"center_x":0.5,"top":0.88}
+        )
+        self.game_layout.add_widget(self.timer_label)
+
+        # Champs catégories
+        start_y = 0.7
+        for cat in self.categories:
+            label = Label(text=cat, font_size=20,
+                          size_hint=(0.3,0.07),
+                          pos_hint={"x":0.05, "top": start_y})
+            ti = TextInput(multiline=False, font_size=18,
+                           size_hint=(0.6,0.07),
+                           pos_hint={"x":0.35, "top": start_y})
+            self.game_layout.add_widget(label)
+            self.game_layout.add_widget(ti)
+            self.input_widgets[cat] = ti
+            start_y -= 0.12
+
+        # Boutons
+        self.submit_btn = Button(
+            text="VALIDER",
+            size_hint=(0.4, 0.1),
+            pos_hint={"center_x":0.5, "y":0.05}
+        )
+        self.submit_btn.bind(on_press=self.end_game)
+        self.game_layout.add_widget(self.submit_btn)
+
+        self.back_btn = Button(
+            text="⬅ RETOUR",
+            size_hint=(0.3,0.08),
+            pos_hint={"x":0.05, "y":0.05}
+        )
+        self.back_btn.bind(on_press=self.go_back)
+        self.game_layout.add_widget(self.back_btn)
+
+        # ===================== NETWORK =====================
+        Clock.schedule_interval(self.poll_server, 1)  # vérifie les messages serveur
+
+    # ===================== BACKGROUND =====================
+    def update_bg(self, *args):
+        self.bg.pos = self.pos
+        self.bg.size = self.size
+
+    def update_roulette_bg(self, *args):
+        self.roulette_bg.pos = self.roulette_container.pos
+        self.roulette_bg.size = self.roulette_container.size
+
+    def update_center_bg(self, *args):
+        self.center_bg.pos = self.center_letter.pos
+        self.center_bg.size = self.center_letter.size
+
+    # ===================== NETWORK =====================
+    def poll_server(self, dt):
+        """
+        Vérifie les messages envoyés par le serveur pour synchronisation
+        """
+        try:
+            response = send_to_server({
+                "action": "get_messages",
+                "pseudo": self.sm.get_screen("hub").children[0].pseudo_input.text.strip(),
+                "code": self.sm.get_screen("salon").children[0].code
+            })
+
+            if response["status"] != "ok":
+                return
+
+            messages = response.get("messages", [])
+            for msg in messages:
+                if msg["type"] == "start_game":
+                    # On démarre la roulette synchronisée
+                    self.start_roulette(host_letter=msg.get("letter"))
+        except:
+            pass
+
+    # ===================== ROULETTE =====================
+    def start_roulette(self, host_letter=None):
+        """
+        host_letter: si fourni, on l'affiche directement, sinon animation normale pour host
+        """
+        self.game_layout.opacity = 0
+        self.roulette_container.opacity = 1
+
+        if host_letter:
+            # Si lettre reçue du serveur, on la montre direct
+            self.letter = host_letter
+            self.center_letter.text = self.letter
+            Clock.schedule_once(self.show_game, 0.5)
+        else:
+            # Côté host : animation roulette
+            self.roulette_time = 0
+            Clock.schedule_once(self.update_roulette_animation, 0.05)
+
+    def update_roulette_animation(self, dt):
+        self.roulette_time += dt
+        speed = max(0.03, 0.15 - self.roulette_time * 0.06)
+
+        if self.roulette_time < 2.2:
+            self.center_letter.text = random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            if roulette_click:
+                roulette_click.volume = max(0.1, 1 - self.roulette_time / 2.2)
+                roulette_click.stop()
+                roulette_click.play()
+            Clock.schedule_once(self.update_roulette_animation, speed)
+            return
+
+        # Lettre finale générée par host
+        self.letter = random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        self.center_letter.text = self.letter
+
+        # Envoi lettre finale au serveur pour tous les clients
+        pseudo = self.sm.get_screen("hub").children[0].pseudo_input.text.strip()
+        code = self.sm.get_screen("salon").children[0].code
+        send_to_server({
+            "action": "letter_finale",
+            "letter": self.letter,
+            "pseudo": pseudo,
+            "code": code
+        })
+
+        Animation(font_size=120, duration=0.15, t="out_back").start(self.center_letter)
+        Clock.schedule_once(self.show_game, 0.4)
+
+    # ===================== JEU =====================
+    def show_game(self, dt):
+        Animation(opacity=0, duration=0.4).start(self.roulette_container)
+        Animation(opacity=1, duration=0.4).start(self.game_layout)
+        Animation(y=self.height * 0.9, duration=0.4, t="out_quad").start(self.letter_label_game)
+
+        self.time_left = 60
+        self.timer_label.text = f"Temps restant : {self.time_left}s"
+
+        for ti in self.input_widgets.values():
+            ti.text = ""
+
+        if self.timer_event:
+            self.timer_event.cancel()
+        self.timer_event = Clock.schedule_interval(self.update_timer, 1)
+        self.letter_label_game.text = f"Lettre : {self.letter}"
+
+    def update_timer(self, dt):
+        self.time_left -= 1
+        self.timer_label.text = f"Temps restant : {self.time_left}s"
+        if self.time_left <= 0:
+            self.end_game()
+
+    # ===================== FIN DE JEU =====================
+    def end_game(self, *args):
+        if self.timer_event:
+            self.timer_event.cancel()
+
+        answers = {cat: ti.text.strip() for cat, ti in self.input_widgets.items()}
+
+        pseudo = self.sm.get_screen("hub").children[0].pseudo_input.text.strip()
+        code = self.sm.get_screen("salon").children[0].code
+
+        # Envoi des réponses au serveur
+        send_to_server({
+            "action": "submit_answers",
+            "pseudo": pseudo,
+            "code": code,
+            "letter": self.letter,
+            "answers": answers
+        })
+
+        # Tous les clients attendront le serveur pour afficher les scores
+        scores_response = send_to_server({
+            "action": "get_scores",
+            "code": code
+        })
+
+        if scores_response.get("status") == "ok":
+            # On peut rediriger vers un écran de scores
+            self.sm.get_screen("petitbac_result").children[0].set_scores(scores_response["scores"])
+            self.sm.current = "petitbac_result"
+
+    # ===================== RETOUR =====================
+    def go_back(self, instance):
+        if self.timer_event:
+            self.timer_event.cancel()
+        self.sm.transition.direction = "right"
+        self.sm.current = "salon"
+
+
+class PetitBacHostValidationScreen(FloatLayout):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+        self.answers = {}  # {"Prénom": "Alice", "Pays": "France", ...}
+        self.letter = ""
+        self.score = 0
+        self.index = 0  # pour parcourir les catégories
+
+        # Layout pour la question actuelle
+        self.question_label = Label(
+            text="",
+            font_size=28,
+            size_hint=(1,0.15),
+            pos_hint={"top":0.95},
+            halign="center"
+        )
+        self.add_widget(self.question_label)
+
+        # Réponse actuelle
+        self.answer_label = Label(
+            text="",
+            font_size=24,
+            size_hint=(0.8,0.1),
+            pos_hint={"center_x":0.5, "top":0.7},
+            halign="center"
+        )
+        self.add_widget(self.answer_label)
+
+        # Boutons host ✅ / ❌
+        self.correct_btn = Button(
+            text="✅ Correct",
+            size_hint=(0.4,0.1),
+            pos_hint={"x":0.05, "y":0.1}
+        )
+        self.correct_btn.bind(on_press=lambda x: self.validate(True))
+        self.add_widget(self.correct_btn)
+
+        self.incorrect_btn = Button(
+            text="❌ Incorrect",
+            size_hint=(0.4,0.1),
+            pos_hint={"x":0.55, "y":0.1}
+        )
+        self.incorrect_btn.bind(on_press=lambda x: self.validate(False))
+        self.add_widget(self.incorrect_btn)
+
+    def set_answers(self, letter, answers):
+        """Appelé depuis PetitBacScreen.end_game"""
+        self.letter = letter
+        self.answers = answers
+        self.index = 0
+        self.score = 0
+        self.show_next()
+
+    def show_next(self):
+        """Affiche la prochaine réponse à valider par le host"""
+        if self.index >= len(self.answers):
+            self.show_final_score()
+            return
+
+        cat = list(self.answers.keys())[self.index]
+        answer = self.answers[cat]
+
+        self.question_label.text = f"Catégorie : {cat}"
+        self.answer_label.text = f"Réponse : {answer}"
+
+    def validate(self, correct):
+        if correct:
+            self.score += 1
+        self.index += 1
+        self.show_next()
+
+    def show_final_score(self):
+        self.question_label.text = "✅ Jeu terminé !"
+        self.answer_label.text = f"Score final : {self.score}/{len(self.answers)}"
+        self.correct_btn.opacity = 0
+        self.incorrect_btn.opacity = 0
+
+        # Ajouter bouton retour au salon
+        self.back_btn = Button(text="⬅ Retour au salon", size_hint=(0.4, 0.1), pos_hint={"center_x": 0.5, "y": 0.05})
+        self.back_btn.bind(on_press=lambda x: setattr(self.sm, 'current', 'salon'))
+        self.add_widget(self.back_btn)
+
+
+class PetitBacResultScreen(FloatLayout):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+
+        # Fond
+        with self.canvas.before:
+            Color(0.1, 0.1, 0.15, 1)
+            self.bg = RoundedRectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self.update_bg, size=self.update_bg)
+
+        # Titre
+        self.title = Label(
+            text="Scores Petit Bac",
+            font_size=36,
+            bold=True,
+            color=(1,1,1,1),
+            size_hint=(1, None),
+            height=50,
+            pos_hint={"center_x":0.5,"top":0.95}
+        )
+        self.add_widget(self.title)
+
+        # Container des scores
+        self.scores_container = GridLayout(
+            cols=2, spacing=10, size_hint=(0.9,0.7),
+            pos_hint={"center_x":0.5,"y":0.1}
+        )
+        self.add_widget(self.scores_container)
+
+        # Bouton retour
+        self.back_btn = Button(
+            text="⬅ Retour au salon",
+            size_hint=(0.4,0.1),
+            pos_hint={"center_x":0.5, "y":0.02}
+        )
+        self.back_btn.bind(on_press=self.go_back)
+        self.add_widget(self.back_btn)
+
+        # Timer pour poll serveur et mettre à jour scores en temps réel
+        Clock.schedule_interval(self.update_scores, 1)
+
+    # ===================== BACKGROUND =====================
+    def update_bg(self, *args):
+        self.bg.pos = self.pos
+        self.bg.size = self.size
+
+    # ===================== UPDATE SCORES =====================
+    def set_scores(self, scores_data):
+        """
+        scores_data: liste de dict
+        [{pseudo: "Enzo", score: 40, answers: {"Prénom":"Alice", ...}}, ...]
+        """
+        self.scores_container.clear_widgets()
+
+        for player in scores_data:
+            pseudo = player.get("pseudo", "???")
+            score = player.get("score", 0)
+            answers = player.get("answers", {})
+
+            player_box = BoxLayout(orientation="vertical", padding=5, spacing=2)
+            name_label = Label(text=f"{pseudo} - {score} pts", font_size=20, bold=True)
+            player_box.add_widget(name_label)
+
+            for cat, ans in answers.items():
+                ans_label = Label(text=f"{cat} : {ans}", font_size=16)
+                player_box.add_widget(ans_label)
+
+            self.scores_container.add_widget(player_box)
+
+    # ===================== POLL SERVEUR =====================
+    def update_scores(self, dt):
+        """
+        Tous les joueurs récupèrent les scores finaux en continu
+        """
+        try:
+            code = self.sm.get_screen("salon").children[0].code
+            response = send_to_server({
+                "action": "get_scores",
+                "code": code
+            })
+            if response.get("status") == "ok":
+                self.set_scores(response.get("scores", []))
+        except:
+            pass
+
+    # ===================== RETOUR =====================
+    def go_back(self, instance):
+        self.sm.current = "salon"
+
+
+# ==== APPLICATION PRINCIPALE ====
+from kivy.uix.screenmanager import ScreenManager, Screen
+
+
+# ==== QUIZ SCREEN ====
+class QuizScreen(FloatLayout):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+
+        self.questions = questions.questions_list.copy()
+        random.shuffle(self.questions)
+        self.questions = self.questions[:20]  # limiter à 20 questions max
+
+        self.index = 0
+        self.score = 0
+        self.current_answer = None
+
+        # === Widgets ===
+        self.question_label = Label(
+            text="",
+            font_size=24,
+            halign="center",
+            valign="middle",
+            size_hint=(0.9, 0.3),
+            pos_hint={"center_x": 0.5, "top": 0.95}
+        )
+        self.question_label.bind(size=self.question_label.setter("text_size"))
+        self.add_widget(self.question_label)
+
+        self.answer_input = TextInput(
+            hint_text="Ta réponse...",
+            multiline=False,
+            font_size=22,
+            size_hint=(0.8, 0.12),
+            pos_hint={"center_x": 0.5, "center_y": 0.45}
+        )
+        self.add_widget(self.answer_input)
+
+        # Bouton pour soumettre la réponse (host va valider après)
+        self.submit_btn = Button(
+            text="Soumettre pour validation",
+            size_hint=(0.6, 0.1),
+            pos_hint={"center_x":0.5, "y":0.25}
+        )
+        self.submit_btn.bind(on_press=self.submit_for_validation)
+        self.add_widget(self.submit_btn)
+
+        # Label score (facultatif pour joueur)
+        self.score_label = Label(
+            text="Score : 0",
+            font_size=18,
+            size_hint=(1, 0.1),
+            pos_hint={"top": 0.15}
+        )
+        self.add_widget(self.score_label)
+
+        self.back_btn = Button(
+            text="⬅ RETOUR",
+            size_hint=(0.3, 0.08),
+            pos_hint={"center_x": 0.5, "y": 0.05}
+        )
+        self.back_btn.bind(on_press=self.go_back)
+        self.add_widget(self.back_btn)
+
+        self.load_question()
+
+    # === Charger question ===
+    def load_question(self):
+        if self.index >= len(self.questions):
+            self.end_quiz()
+            return
+
+        q = self.questions[self.index]
+        self.question_label.text = f"[b]Q{self.index+1}: {q['question']}[/b]"
+        self.question_label.markup = True
+        self.answer_input.text = ""
+        self.current_answer = None
+
+    # === Soumettre réponse pour host ===
+    def submit_for_validation(self, instance):
+        self.current_answer = self.answer_input.text.strip()
+        if not self.current_answer:
+            Popup(title="⚠️ Erreur",
+                  content=Label(text="Veuillez entrer une réponse"),
+                  size_hint=(0.6, 0.3)).open()
+            return
+
+        # Envoi vers l'écran host validation
+        host_screen = self.sm.get_screen('quiz_host_validation').children[0]
+        host_screen.set_data([self.questions[self.index]], [self.current_answer])
+
+        # Passe à la question suivante
+        self.index += 1
+        self.load_question()
+
+    # === Retour au salon ===
+    def go_back(self, instance):
+        self.sm.current = "salon"
+
+    def end_quiz(self):
+        """Appelé quand toutes les questions ont été répondues"""
+        # Récupère la réponse actuelle si elle n'a pas été soumise
+        if self.current_answer:
+            answers = [self.current_answer]
+            questions = [self.questions[self.index - 1]]  # dernière question soumise
+        else:
+            answers = []
+            questions = []
+
+        # Récupère l'écran host
+        host_screen = self.sm.get_screen('quiz_host_validation').children[0]
+        # On envoie toutes les questions et réponses
+        host_screen.set_data(self.questions, [q.get('reponse', '') for q in self.questions])
+        # Passe à l'écran host validation
+        self.sm.current = 'quiz_host_validation'
+
+
+# ==== SCREEN DE FIN QUIZ POUR HOST ====
+class QuizHostValidationScreen(FloatLayout):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+        self.questions = []
+        self.answers = []
+        self.index = 0
+        self.score = 0
+
+        # Question actuelle
+        self.question_label = Label(
+            text="",
+            font_size=28,
+            size_hint=(1, 0.2),
+            pos_hint={"top": 0.95},
+            halign="center",
+            valign="middle",
+        )
+        self.question_label.bind(size=self.question_label.setter("text_size"))
+
+        # Réponse actuelle
+        self.answer_label = Label(
+            text="",
+            font_size=24,
+            size_hint=(0.8, 0.15),
+            pos_hint={"center_x":0.5, "center_y":0.6},
+            halign="center"
+        )
+        self.add_widget(self.answer_label)
+
+        # Boutons host ✅ / ❌
+        self.correct_btn = Button(
+            text="✅ Correct",
+            size_hint=(0.4,0.1),
+            pos_hint={"x":0.05, "y":0.1}
+        )
+        self.correct_btn.bind(on_press=lambda x: self.validate(True))
+        self.add_widget(self.correct_btn)
+
+        self.incorrect_btn = Button(
+            text="❌ Incorrect",
+            size_hint=(0.4,0.1),
+            pos_hint={"x":0.55, "y":0.1}
+        )
+        self.incorrect_btn.bind(on_press=lambda x: self.validate(False))
+        self.add_widget(self.incorrect_btn)
+
+    def set_data(self, questions, answers):
+        """Appelé depuis QuizScreen à la fin du quiz"""
+        self.questions = questions
+        self.answers = answers
+        self.index = 0
+        self.score = 0
+        self.show_next()
+
+    def show_next(self):
+        """Affiche la prochaine question à valider"""
+        if self.index >= len(self.questions):
+            self.show_final_score()
+            return
+
+        q = self.questions[self.index]
+        ans = self.answers[self.index]
+        self.question_label.text = f"Question : {q['question']}"
+        self.answer_label.text = f"Réponse donnée : {ans}"
+
+    def validate(self, correct):
+        if correct:
+            self.score += 1
+        self.index += 1
+        self.show_next()
+
+    def show_final_score(self):
+        self.question_label.text = "🏁 Quiz terminé !"
+        self.answer_label.text = f"Score final : {self.score}/{len(self.questions)}"
+        self.correct_btn.opacity = 0
+        self.incorrect_btn.opacity = 0
+
+        # Bouton retour
+        self.back_btn = Button(
+            text="⬅ Retour au salon",
+            size_hint=(0.4, 0.1),
+            pos_hint={"center_x": 0.5, "y": 0.05}
+        )
+        self.back_btn.bind(on_press=lambda x: setattr(self.sm, 'current', 'salon'))
+        self.add_widget(self.back_btn)
+
+        # Bouton relancer
+        self.restart_btn = Button(
+            text="🔄 Rejouer",
+            size_hint=(0.4, 0.1),
+            pos_hint={"center_x": 0.5, "y": 0.18}
+        )
+        self.restart_btn.bind(on_press=self.restart_quiz)
+        self.add_widget(self.restart_btn)
+
+    def restart_quiz(self, instance):
+        quiz_screen = self.sm.get_screen('quiz').children[0]
+        quiz_screen.index = 0
+        quiz_screen.score = 0
+        random.shuffle(quiz_screen.questions)
+        quiz_screen.load_question()
+        self.sm.current = 'quiz'
+
+
+
+# ==== JOIN SCREEN ====
+class JoinScreen(FloatLayout):
+    def __init__(self, sm, **kwargs):
+        super().__init__(**kwargs)
+        self.sm = sm
+
+        with self.canvas.before:
+            Color(0.2, 0.25, 0.85, 1)
+            self.bg = RoundedRectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self.update_bg, size=self.update_bg)
+
+        self.title = Label(
+            text="[b][color=FFFFFF]Rejoindre une partie[/color][/b]",
+            markup=True,
+            font_size=26,
+            size_hint=(1,0.15),
+            pos_hint={"top":0.95}
+        )
+        self.add_widget(self.title)
+
+        self.code_input = TextInput(
+            hint_text="Code de la partie",
+            multiline=False,
+            font_size=24,
+            size_hint=(0.7,0.12),
+            pos_hint={"center_x":0.5,"center_y":0.55}
+        )
+        self.add_widget(self.code_input)
+
+        self.join_btn = Button(
+            text="REJOINDRE",
+            size_hint=(0.5,0.12),
+            pos_hint={"center_x":0.5,"center_y":0.38}
+        )
+        self.join_btn.bind(on_press=self.join_game)
+        self.add_widget(self.join_btn)
+
+        self.back_btn = Button(
+            text="⬅ RETOUR",
+            size_hint=(0.3,0.08),
+            pos_hint={"center_x":0.5,"y":0.05}
+        )
+        self.back_btn.bind(on_press=self.go_back)
+        self.add_widget(self.back_btn)
+
+    def update_bg(self, *args):
+        self.bg.pos = self.pos
+        self.bg.size = self.size
+
+    def join_game(self, instance):
+        pseudo = self.sm.get_screen('hub').children[0].pseudo_input.text.strip()
+        if not pseudo:
+            Popup(
+                title="⚠️ Erreur",
+                content=Label(text="Veuillez entrer un pseudo !"),
+                size_hint=(0.6, 0.3)
+            ).open()
+            return
+
+        code = self.code_input.text.strip()
+
+        response = send_to_server({
+            "action": "join",
+            "pseudo": pseudo,
+            "code": code
+        })
+
+        if response["status"] != "ok":
+            Popup(
+                title="❌ Erreur",
+                content=Label(text=response.get("message", "Code invalide")),
+                size_hint=(0.6, 0.3)
+            ).open()
+            return
+
+        salon = self.sm.get_screen("salon").children[0]
+        salon.set_info(pseudo, code)
+        salon.update_players()
+        self.sm.current = "salon"
+
+
+    def go_back(self, instance):
+        self.sm.current = 'hub'
+
+
+
+
+# ==== APPLICATION PRINCIPALE ====
+
+class MainApp(App):
+    def build(self):
+        # ScreenManager avec transition
+        self.sm = ScreenManager(transition=FadeTransition())
+
+        # --- HUB SCREEN ---
+        hub_screen = Screen(name="hub")
+        hub_layout = HubScreen(self.sm)
+        hub_screen.add_widget(hub_layout)
+        self.sm.add_widget(hub_screen)
+
+        # --- SALON SCREEN ---
+        salon_screen = Screen(name="salon")
+        salon_layout = SalonScreen(self.sm)
+        salon_screen.add_widget(salon_layout)
+        self.sm.add_widget(salon_screen)
+
+        # --- PETIT BAC SCREEN ---
+        petitbac_screen = Screen(name="petitbac")
+        petitbac_layout = PetitBacScreen(self.sm)
+        petitbac_screen.add_widget(petitbac_layout)
+        self.sm.add_widget(petitbac_screen)
+
+        # --- PETIT BAC HOST VALIDATION SCREEN ---
+        petitbac_host_screen = Screen(name="petitbac_host_validation")
+        petitbac_host_layout = PetitBacHostValidationScreen(self.sm)
+        petitbac_host_screen.add_widget(petitbac_host_layout)
+        self.sm.add_widget(petitbac_host_screen)
+
+        # --- PETIT BAC RESULT SCREEN ---
+        petitbac_result_screen = Screen(name="petitbac_result")
+        petitbac_result_layout = PetitBacResultScreen(self.sm)
+        petitbac_result_screen.add_widget(petitbac_result_layout)
+        self.sm.add_widget(petitbac_result_screen)
+
+        # --- QUIZ SCREEN ---
+        quiz_screen = Screen(name="quiz")
+        quiz_layout = QuizScreen(self.sm)
+        quiz_screen.add_widget(quiz_layout)
+        self.sm.add_widget(quiz_screen)
+
+        # --- QUIZ HOST VALIDATION SCREEN ---
+        quiz_host_screen = Screen(name="quiz_host_validation")
+        quiz_host_layout = QuizHostValidationScreen(self.sm)
+        quiz_host_screen.add_widget(quiz_host_layout)
+        self.sm.add_widget(quiz_host_screen)
+
+        # --- JOIN SCREEN ---
+        join_screen = Screen(name="join")
+        join_layout = JoinScreen(self.sm)
+        join_screen.add_widget(join_layout)
+        self.sm.add_widget(join_screen)
+
+        # --- SETTINGS SCREEN (optionnel écran séparé) ---
+        settings_screen = Screen(name="settings")
+        settings_layout = SettingsScreen(self.sm)
+        settings_screen.add_widget(settings_layout)
+        self.sm.add_widget(settings_screen)
+
+        # --- Musique de fond ---
+        if music:
+            music.stop()
+            music.play()
+
+        # Démarrage sur le Hub
+        self.sm.current = "hub"
+        return self.sm
+
+
+if __name__ == "__main__":
+    MainApp().run()
