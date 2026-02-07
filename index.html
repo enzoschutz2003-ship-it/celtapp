@@ -1,7 +1,7 @@
 import random
 import string
 import webbrowser
-from kivy.app import App
+
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.screenmanager import ScreenManager, Screen, FadeTransition
 from kivy.uix.label import Label
@@ -109,7 +109,9 @@ auto_update()
 
 
 def resource_path(relative_path):
+    """Obtenir le chemin absolu du fichier, même dans l'exe PyInstaller"""
     try:
+        # PyInstaller crée un dossier temporaire _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
@@ -153,11 +155,11 @@ def generate_code(length=6):
 # Chargement des sons
 roulette_click = SoundLoader.load(resource_path("assets/clic.wav"))
 launch_sound = SoundLoader.load(resource_path("assets/lance.wav"))
-click_sound = SoundLoader.load(resource_path("assets/clic.wav"))
 music = SoundLoader.load(resource_path("assets/son.mp3"))
 help_voice_female = SoundLoader.load(resource_path("assets/help_femme.mp3"))
 help_voice_male = SoundLoader.load(resource_path("assets/help_homme.mp3"))
 
+click_sound = SoundLoader.load(resource_path("assets/clic.wav"))
 
 if help_voice_female:
     help_voice_female.volume = 1
@@ -217,7 +219,7 @@ def get_widget(sm, screen_name):
 def send_to_server(data):
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(("127.0.0.1", 5051))
+        s.connect(("127.0.0.1", 55555))
         s.send(json.dumps(data).encode())
         response = json.loads(s.recv(1024).decode())
         s.close()
@@ -488,46 +490,59 @@ class AnimatedRunner(KivyImage):
 
     def next_frame(self, dt):
         if not self.frames: return
-        self.index = (self.index+1)%len(self.frames)
+        self.index = (self.index + 1) % len(self.frames)
         self.texture = self.frames[self.index]
 
 
 # ====================== HELP POPUP ======================
 def show_help_popup():
     global current_help_voice
-    layout = BoxLayout(orientation="vertical", spacing=15, padding=20)
+    layout = FloatLayout()
 
-    label = Label(text="Bienvenue !\nUtilise les boutons pour créer ou rejoindre une partie.",
-                  halign="center", valign="middle")
-    label.bind(size=lambda inst,val:setattr(inst,"text_size",val))
-    layout.add_widget(label)
+    main_box = BoxLayout(orientation="vertical", spacing=15, padding=20)
+    layout.add_widget(main_box)
+
+    # Texte
+    label = Label(
+        text="Bienvenue !\nUtilise les boutons pour créer ou rejoindre une partie.",
+        halign="center", valign="middle"
+    )
+    label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
+    main_box.add_widget(label)
 
     # Boutons lecture
-    btns = BoxLayout(size_hint=(1,None), height=50, spacing=10)
+    btns = BoxLayout(size_hint=(1, None), height=50, spacing=10)
     play_btn = Button(text="▶ Play")
     replay_btn = Button(text="🔁 Rejouer")
     close_btn = Button(text="❌ Fermer")
-    btns.add_widget(play_btn); btns.add_widget(replay_btn); btns.add_widget(close_btn)
-    layout.add_widget(btns)
+    btns.add_widget(play_btn)
+    btns.add_widget(replay_btn)
+    btns.add_widget(close_btn)
+    main_box.add_widget(btns)
 
-    # Boutons voix
-    voices_box = BoxLayout(size_hint=(1,None), height=50, spacing=10)
+    # Choix voix
+    voices_box = BoxLayout(size_hint=(1, None), height=50, spacing=10)
     voice_female_btn = Button(text="🎙️ Voix féminine")
     voice_male_btn = Button(text="🎙️ Voix masculine")
-    voices_box.add_widget(voice_female_btn); voices_box.add_widget(voice_male_btn)
-    layout.add_widget(voices_box)
+    voices_box.add_widget(voice_female_btn)
+    voices_box.add_widget(voice_male_btn)
+    main_box.add_widget(voices_box)
 
     popup = Popup(title="❓ Aide & Explications", content=layout,
-                  size_hint=(0.8,0.6), auto_dismiss=False)
+                  size_hint=(0.8, 0.6), auto_dismiss=False)
 
     def stop_voice():
-        if help_voice_female: help_voice_female.stop()
-        if help_voice_male: help_voice_male.stop()
+        if help_voice_female is not None: help_voice_female.stop()
+        if help_voice_male is not None: help_voice_male.stop()
 
-    def play_voice(): stop_voice(); current_help_voice.play() if current_help_voice else None
+    def play_voice():
+        stop_voice()
+        if current_help_voice:
+            current_help_voice.play()
+
     def set_voice(type_):
         global current_help_voice
-        current_help_voice = help_voice_female if type_=="female" else help_voice_male
+        current_help_voice = help_voice_female if type_ == "female" else help_voice_male
         play_voice()
 
     play_btn.bind(on_press=lambda x: play_voice())
@@ -547,93 +562,105 @@ class HubScreen(FloatLayout):
         self.sm = sm
 
         # --- Fond ---
-        self.bg_image = KivyImage(source="assets/fond.png", allow_stretch=True, keep_ratio=False,
-                                  size_hint=(1,1), pos_hint={"x":0,"y":0})
+        self.bg_image = KivyImage(
+            source=resource_path("assets/fond.png"),
+            allow_stretch=True,
+            keep_ratio=False,
+            size_hint=(1, 1),
+            pos_hint={"x": 0, "y": 0}
+        )
         self.add_widget(self.bg_image, index=0)
 
         # --- Crédit ---
         self.credit_label = Label(
             text="[b][color=#FFD700]Créé par @Celtreme[/color][/b]",
-            markup=True, font_size=19, size_hint=(1,0.05), pos_hint={"top":0.97}
+            markup=True, font_size=19, size_hint=(1, 0.05), pos_hint={"top": 0.97}
         )
         self.add_widget(self.credit_label)
 
         # --- Logo ---
-        self.logo = KivyImage(source="assets/celtreme.png", size_hint=(0.2,0.2),
-                               pos_hint={"center_x":0.5,"top":0.94})
+        self.logo = KivyImage(
+            source=resource_path("assets/celtreme.png"),
+            size_hint=(0.2, 0.2),
+            pos_hint={"center_x": 0.5, "top": 0.94}
+        )
         self.add_widget(self.logo)
 
         # --- Pseudo input ---
         self.pseudo_input = TextInput(
             hint_text="Entre ton pseudo",
-            hint_text_color=(1,1,1,1),
-            size_hint=(0.8,0.12),
-            pos_hint={"center_x":0.5,"top":0.75},
-            multiline=False, font_size=30,
-            foreground_color=(1,1,1,1),
-            cursor_color=(0.1,0.1,0.1,1),
-            halign="center", padding_y=(12,12),
-            background_color=(0.6,0.1,0.1,1)
+            hint_text_color=(1, 1, 1, 1),
+            size_hint=(0.8, 0.12),
+            pos_hint={"center_x": 0.5, "top": 0.75},
+            multiline=False,
+            font_size=30,
+            foreground_color=(1, 1, 1, 1),
+            cursor_color=(0.1, 0.1, 0.1, 1),
+            halign="center",
+            padding_y=(12, 12),
+            background_color=(0.6, 0.1, 0.1, 1)
         )
         self.add_widget(self.pseudo_input)
 
-        # --- Sprite perso ---
-        self.frames = []
-        for i in range(1, 5):
-            path = os.path.join("assets", "perso_run", f"frame{i}.png")
-            if not os.path.exists(path):
-                raise FileNotFoundError(f"Image manquante : {path}")
-            self.frames.append(CoreImage(path).texture)
+        # --- Sprite perso optimisé ---
+        self.frames = [CoreImage(resource_path(f"assets/perso_run/frame{i}.png")).texture for i in range(1, 5)]
         self.frame_index = 0
+        self.runner = KivyImage(texture=self.frames[0], size=(96, 96), pos=(-120, 20))
+        self.add_widget(self.runner)
 
-        # Widget pour le perso (position gérée séparément)
-        self.runner_widget = Widget(size=(96,96), pos=(-120,20))
-        self.add_widget(self.runner_widget)
-
-        # Rectangle pour afficher la frame
-        with self.runner_widget.canvas:
-            self.runner_rect = Rectangle(texture=self.frames[0],
-                                         pos=self.runner_widget.pos,
-                                         size=self.runner_widget.size)
-
-        # --- Animation frames ---
-        Clock.schedule_interval(self.update_runner_frame, 0.1)
-
-        # --- Déplacement fluide avec bond ---
         self.runner_x = -120
         self.base_y = 20
         self.runner_speed = 200
-        self.bond_amplitude = 8
-        self.bond_frequency = 6
+        self.bond_amp = 8
+        self.bond_freq = 6
         self.time_elapsed = 0
-        Clock.schedule_interval(self.move_runner, 1/60)
 
-        # --- Boutons ---
-        self.create_btn = Button(text="CRÉER UNE PARTIE", size_hint=(0.8,0.12), pos_hint={"center_x":0.5,"top":0.58},
-                                 background_normal='', background_color=(0,0.8,0.3,1), color=(1,1,1,1),
-                                 font_size=22, bold=True)
+        # Animation + mouvement en un seul Clock
+        Clock.schedule_interval(self.update_runner, 1 / 60)
+
+        # --- Boutons Créer/Joindre ---
+        self.create_btn = Button(
+            text="CRÉER UNE PARTIE",
+            size_hint=(0.8, 0.12),
+            pos_hint={"center_x": 0.5, "top": 0.58},
+            background_normal='',
+            background_color=(0, 0.8, 0.3, 1),
+            color=(1, 1, 1, 1),
+            font_size=22,
+            bold=True
+        )
         self.add_widget(self.create_btn)
         with self.create_btn.canvas.before:
-            Color(0,0.8,0.3,1)
+            Color(0, 0.8, 0.3, 1)
             self.create_rect = RoundedRectangle(pos=self.create_btn.pos, size=self.create_btn.size, radius=[30])
         self.create_btn.bind(pos=self.update_shapes, size=self.update_shapes)
         self.create_btn.bind(on_press=lambda x: play_click())
         self.create_btn.bind(on_press=self.create_game)
 
-        self.join_btn = Button(text="REJOINDRE UNE PARTIE", size_hint=(0.8,0.12), pos_hint={"center_x":0.5,"top":0.42},
-                               background_normal='', background_color=(0.2,0.3,0.6,1), color=(1,1,1,1),
-                               font_size=22, bold=True)
+        self.join_btn = Button(
+            text="REJOINDRE UNE PARTIE",
+            size_hint=(0.8, 0.12),
+            pos_hint={"center_x": 0.5, "top": 0.42},
+            background_normal='',
+            background_color=(0.2, 0.3, 0.6, 1),
+            color=(1, 1, 1, 1),
+            font_size=22,
+            bold=True
+        )
         self.add_widget(self.join_btn)
         with self.join_btn.canvas.before:
-            Color(0.2,0.3,0.6,1)
+            Color(0.2, 0.3, 0.6, 1)
             self.join_rect = RoundedRectangle(pos=self.join_btn.pos, size=self.join_btn.size, radius=[30])
         self.join_btn.bind(pos=self.update_shapes, size=self.update_shapes)
         self.join_btn.bind(on_press=lambda x: play_click())
         self.join_btn.bind(on_press=self.join_game)
 
         # --- Bouton paramètres ---
-        self.settings_btn = Button(size_hint=(0.2,0.2), pos_hint={"right":0.19,"top":1.02},
-                                   background_normal="assets/parametre.png")
+        self.settings_btn = Button(
+            background_normal=resource_path("assets/parametre.png"),
+            size_hint=(0.2, 0.2),
+            pos_hint={"right": 0.19, "top": 1.02}
+        )
         self.settings_btn.bind(on_press=self.go_to_settings)
         self.add_widget(self.settings_btn)
 
@@ -648,15 +675,14 @@ class HubScreen(FloatLayout):
             font_size=20,
             bold=True
         )
-        self.help_btn.bind(on_press=lambda x: self.show_help_popup())
+        self.help_btn.bind(on_press=lambda x: show_help_popup())
         self.add_widget(self.help_btn)
-
         with self.help_btn.canvas.before:
             Color(0.9, 0.6, 0, 1)
             self.help_rect = RoundedRectangle(pos=self.help_btn.pos, size=self.help_btn.size, radius=[20])
         self.help_btn.bind(pos=self.update_shapes, size=self.update_shapes)
 
-        # --- Jouer le son de lancement ---
+        # --- Son de lancement ---
         play_start_sound()
 
     # ================== MÉTHODES ==================
@@ -669,28 +695,25 @@ class HubScreen(FloatLayout):
             self.help_rect.pos = self.help_btn.pos
             self.help_rect.size = self.help_btn.size
 
-    def update_runner_frame(self, dt):
-        self.frame_index = (self.frame_index + 1) % len(self.frames)
-        self.runner_rect.texture = self.frames[self.frame_index]
-
-    def move_runner(self, dt):
+    def update_runner(self, dt):
         self.time_elapsed += dt
+        # Déplacement
         self.runner_x += self.runner_speed * dt
         if self.runner_x > self.width + 120:
             self.runner_x = -120
             self.time_elapsed = 0
-        y_offset = math.sin(self.time_elapsed * self.bond_frequency) * self.bond_amplitude
-        self.runner_rect.pos = (self.runner_x, self.base_y + y_offset)
+        y_offset = math.sin(self.time_elapsed * self.bond_freq) * self.bond_amp
+        self.runner.pos = (self.runner_x, self.base_y + y_offset)
+
+        # Changement de frame
+        self.frame_index = (self.frame_index + 1) % len(self.frames)
+        self.runner.texture = self.frames[self.frame_index]
 
     # ==== Actions boutons ====
     def create_game(self, instance):
         pseudo = self.pseudo_input.text.strip()
         if not pseudo:
-            Popup(
-                title="⚠️ Erreur",
-                content=Label(text="Veuillez entrer un pseudo !"),
-                size_hint=(0.6, 0.3)
-            ).open()
+            Popup(title="⚠️ Erreur", content=Label(text="Veuillez entrer un pseudo !"), size_hint=(0.6, 0.3)).open()
             return
         code = generate_code()
         salon_screen = self.sm.get_screen('salon').children[0]
@@ -700,100 +723,22 @@ class HubScreen(FloatLayout):
     def join_game(self, instance):
         pseudo = self.pseudo_input.text.strip()
         if not pseudo:
-            Popup(
-                title="⚠️ Erreur",
-                content=Label(text="Veuillez entrer un pseudo !"),
-                size_hint=(0.6, 0.3)
-            ).open()
+            Popup(title="⚠️ Erreur", content=Label(text="Veuillez entrer un pseudo !"), size_hint=(0.6, 0.3)).open()
             return
-
-        # Récupère l'écran "join"
-        join_screen = self.sm.get_screen('join')
-
-
-        # Change d'écran
         self.sm.current = 'join'
 
     def go_to_settings(self, instance):
         play_click()
         self.sm.current = 'settings'
 
-    def show_help_popup(self):
-        global current_help_voice
-        layout = BoxLayout(orientation="vertical", spacing=15, padding=20)
 
-        # Texte d'explication
-        text = (
-            "Bienvenue dans l'application de mini-jeux !\n\n"
-            "Utilise les boutons pour créer ou rejoindre une partie.\n"
-        )
-        label = Label(text=text, halign="center", valign="middle")
-        label.bind(size=lambda inst, val: setattr(inst, "text_size", val))
-        layout.add_widget(label)
-
-        # --- Boutons lecture ---
-        btns = BoxLayout(size_hint=(1, None), height=50, spacing=10)
-        play_btn = Button(text="▶ Play")
-        replay_btn = Button(text="🔁 Rejouer")
-        close_btn = Button(text="❌ Fermer")
-        btns.add_widget(play_btn)
-        btns.add_widget(replay_btn)
-        btns.add_widget(close_btn)
-        layout.add_widget(btns)
-
-        # --- Boutons choix voix ---
-        voices_box = BoxLayout(size_hint=(1, None), height=50, spacing=10)
-        voice_female_btn = Button(text="🎙️ Voix féminine")
-        voice_male_btn = Button(text="🎙️ Voix masculine")
-        voices_box.add_widget(voice_female_btn)
-        voices_box.add_widget(voice_male_btn)
-        layout.add_widget(voices_box)
-
-        # --- Création du popup ---
-        popup = Popup(
-            title="❓ Aide & Explications",
-            content=layout,
-            size_hint=(0.8, 0.6),
-            auto_dismiss=False
-        )
-
-        # --- Fonction pour arrêter la voix ---
-        def stop_help_voice():
-            if help_voice_female:
-                help_voice_female.stop()
-            if help_voice_male:
-                help_voice_male.stop()
-
-        # --- Fonction pour jouer la voix active ---
-        def play_help_voice_func():
-            stop_help_voice()
-            if current_help_voice:
-                current_help_voice.play()
-
-        # --- Fonction pour changer de voix ---
-        def set_help_voice(voice_type):
-            global current_help_voice
-            current_help_voice = help_voice_female if voice_type == "female" else help_voice_male
-            play_help_voice_func()
-
-        # --- Bind des boutons ---
-        play_btn.bind(on_press=lambda x: play_help_voice_func())
-        replay_btn.bind(on_press=lambda x: play_help_voice_func())
-        close_btn.bind(on_press=lambda x: popup.dismiss())
-        voice_female_btn.bind(on_press=lambda x: set_help_voice("female"))
-        voice_male_btn.bind(on_press=lambda x: set_help_voice("male"))
-
-        # --- STOPPER la voix quand le popup se ferme ---
-        popup.bind(on_dismiss=lambda instance: stop_help_voice())
-        popup.open()
-
+# ====================== JOIN SCREEN ======================
 class JoinScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.layout = FloatLayout()
         self.add_widget(self.layout)
-
-        self.pseudo_input = TextInput(size_hint=(0.6, 0.1), pos_hint={'x':0.2,'y':0.5})
+        self.pseudo_input = TextInput(size_hint=(0.6, 0.1), pos_hint={'x': 0.2, 'y': 0.5})
         self.layout.add_widget(self.pseudo_input)
 
 
